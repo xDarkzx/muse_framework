@@ -80,17 +80,29 @@ bool TcpTransport::start()
     if (!m_server) {
         m_server = new QTcpServer();
         QObject::connect(m_server, &QTcpServer::newConnection, [this]() {
+            //! NOTE Always drain the pending connection - leaving it unconsumed in the
+            //! server's backlog when a connection is already active would leak the socket.
+            QTcpSocket* socket = m_server->nextPendingConnection();
+
             if (m_connection) {
-                LOGE() << "Already connected";
+                LOGW() << "New connection while one is already active - rejecting the new one";
+                socket->disconnectFromHost();
+                socket->deleteLater();
                 return;
             }
 
-            QTcpSocket* socket = m_server->nextPendingConnection();
             m_connection = new TcpConnection(socket, m_onRequest);
+            //! NOTE m_connection self-deletes (via deleteLater) when its socket disconnects
+            //! (see TcpConnection's constructor). Without this, m_connection would be left
+            //! dangling after the first client disconnects, permanently blocking every
+            //! connection after it for the rest of this process's lifetime.
+            QObject::connect(m_connection, &QObject::destroyed, [this]() {
+                m_connection = nullptr;
+            });
         });
     }
 
-    if (!m_server->listen(QHostAddress::Any, DEFAULT_PORT)) {
+    if (!m_server->listen(QHostAddress::LocalHost, DEFAULT_PORT)) {
         return false;
     }
 

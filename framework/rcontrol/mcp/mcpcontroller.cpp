@@ -19,6 +19,8 @@
 
 #include "mcpcontroller.h"
 
+#include <sstream>
+
 #include "mcpserver.h"
 
 #include "global/stringutils.h"
@@ -48,16 +50,79 @@ static std::string commandToToolName(const Command& command)
     return path;
 }
 
+static muse::rcontrol::mcp::DataType toMcpDataType(muse::rcommand::DataType type)
+{
+    using McpDataType = muse::rcontrol::mcp::DataType;
+    switch (type) {
+    case muse::rcommand::DataType::String: return McpDataType::String;
+    case muse::rcommand::DataType::Integer: return McpDataType::Integer;
+    case muse::rcommand::DataType::Float: return McpDataType::Float;
+    case muse::rcommand::DataType::Boolean: return McpDataType::Boolean;
+    case muse::rcommand::DataType::Object: return McpDataType::Object;
+    case muse::rcommand::DataType::Array: return McpDataType::Array;
+    case muse::rcommand::DataType::Null: return McpDataType::Null;
+    case muse::rcommand::DataType::Undefined:
+    default: return McpDataType::Undefined;
+    }
+}
+
+static muse::JsonValue valToJsonValue(const muse::Val& val)
+{
+    if (val.isNull()) {
+        return muse::JsonValue();
+    }
+
+    switch (val.type()) {
+    case muse::Val::Type::Bool: return muse::JsonValue(val.toBool());
+    case muse::Val::Type::Int:
+    case muse::Val::Type::Int64: return muse::JsonValue(val.toInt());
+    case muse::Val::Type::Double: return muse::JsonValue(val.toDouble());
+    default: return muse::JsonValue(val.toString());
+    }
+}
+
+//! NOTE JsonValue::toStdString() only returns a real value for a JSON string -
+//! for every other JSON type (number, bool, etc.) it silently returns an EMPTY
+//! string. Found via a crash dump: a numeric MCP argument (e.g. select-time's
+//! start/end) was reaching handlers as "" instead of "0"/"2.5", and an unguarded
+//! std::stod("") downstream threw an uncaught std::invalid_argument that crashed
+//! the whole app. Convert every JSON value type to its string form explicitly
+//! here instead of relying on toStdString() for non-string types.
+static std::string jsonValueToString(const muse::JsonValue& value)
+{
+    if (value.isString()) {
+        return value.toStdString();
+    }
+    if (value.isNumber()) {
+        std::ostringstream oss;
+        oss.precision(15);
+        oss << value.toDouble();
+        return oss.str();
+    }
+    if (value.isBool()) {
+        return value.toBool() ? "true" : "false";
+    }
+    return value.toStdString();
+}
+
 static CommandQuery commandQuery(const std::string& name, const muse::JsonObject& args)
 {
-    UNUSED(args); // TODO: implement
     std::string path = name;
     muse::strings::replace(path, "_", "/");
     Command cmd(std::string(COMMAND_SCHEME), path);
     CommandQuery q(cmd);
-    // for (const auto& arg : args) {
-    //     q.set(arg.first, arg.second.toString());
-    // }
+
+    //! NOTE args.keys() asserts internally (picojson's get<T> type-check) if the
+    //! underlying JSON value was never actually initialized as an object - which is
+    //! the case for a default-constructed/invalid JsonObject. Confirmed via a crash
+    //! dump: this happened even for a syntactically valid empty "{}" arguments value
+    //! in some call, so isValid() is checked defensively rather than assumed.
+    if (args.isValid()) {
+        for (const std::string& key : args.keys()) {
+            q.set(key, jsonValueToString(args.value(key)));
+        }
+    }
+
     return q;
 }
 
@@ -76,9 +141,22 @@ void McpController::init()
     {
         LOGDA() << "Tools call: " << name;
 
-        commandsDispatcher()->dispatch(commandQuery(name, args));
+        commandsDispatcher()->dispatch(commandQuery(name, args))
+        .onResolve(this, [onResult](const Response& response) {
+            ToolResult result;
+            result.isError = !response.ret.success();
 
-        onResult(ToolResult());
+            if (!response.ret.text().empty()) {
+                result.content.push_back(response.ret.text());
+            }
+            if (response.data.has_value()) {
+                if (const std::string* text = std::any_cast<std::string>(&response.data)) {
+                    result.content.push_back(*text);
+                }
+            }
+
+            onResult(result);
+        });
     });
 
     m_mcpServer->init();
@@ -102,15 +180,16 @@ std::vector<Tool> McpController::makeToolsList() const
         tool.name = commandToToolName(info.command);
         tool.title = info.title.raw().translated().toStdString();
         tool.description = info.description.translated().toStdString();
-        tool.inputSchema = InputSchema();
-        // for (const auto& arg : info.inputSchema.args) {
-        //     Property property;
-        //     property.name = String::fromStdString(arg.first);
-        //     property.type = String::fromStdString(arg.second.type);
-        //     property.description = String::fromStdString(arg.second.description);
-        //     property.minimum = String::fromStdString(arg.second.minimum);
-        //     property.maximum = String::fromStdString(arg.second.maximum);
-        // }
+        InputSchema schema;
+        for (const auto& [argName, arg] : info.inputSchema.args) {
+            Property property;
+            property.type = toMcpDataType(arg.type);
+            property.description = arg.description.toStdString();
+            property.minimum = valToJsonValue(arg.min);
+            property.maximum = valToJsonValue(arg.max);
+            schema.properties[argName] = property;
+        }
+        tool.inputSchema = schema;
         tools.push_back(std::move(tool));
     }
     return tools;

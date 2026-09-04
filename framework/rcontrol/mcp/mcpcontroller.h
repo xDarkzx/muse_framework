@@ -23,6 +23,7 @@
 
 #include "modularity/ioc.h"
 #include "global/iapplication.h"
+#include "global/async/asyncable.h"
 #include "rcommand/icommanddispatcher.h"
 #include "rcommand/icommandsregister.h"
 
@@ -30,7 +31,7 @@
 
 namespace muse::rcontrol::mcp {
 class McpServer;
-class McpController : public Contextable
+class McpController : public Contextable, public async::Asyncable
 {
     GlobalInject<IApplication> application;
     GlobalInject<rcommand::ICommandsRegister> commandsRegister;

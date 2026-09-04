@@ -20,11 +20,16 @@
 #include "rcontrolmodule.h"
 
 #include "mcp/mcpcontroller.h"
+#include "global/settings.h"
 
 using namespace muse;
 using namespace muse::rcontrol;
 
 static const std::string mname("rcontrol");
+//! NOTE Checked only once, at startup (see RControlContext::onInit) - toggling this
+//! at runtime does not start/stop the server. A host app's Preferences UI for this
+//! setting should say the change takes effect after restarting.
+static const Settings::Key MCP_ENABLED_KEY(mname, "mcp/enabled");
 
 std::string RControlModule::moduleName() const
 {
@@ -39,11 +44,17 @@ modularity::IContextSetup* RControlModule::newContext(const muse::modularity::Co
 void RControlContext::registerExports()
 {
     m_mcpController = std::make_shared<mcp::McpController>(iocContext());
+
+    settings()->setDefaultValue(MCP_ENABLED_KEY, Val(false));
 }
 
 void RControlContext::onInit(const IApplication::RunMode& mode)
 {
     if (mode != IApplication::RunMode::GuiApp) {
+        return;
+    }
+
+    if (!settings()->value(MCP_ENABLED_KEY).toBool()) {
         return;
     }
 

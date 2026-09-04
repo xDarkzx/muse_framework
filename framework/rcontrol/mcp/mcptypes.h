@@ -20,6 +20,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "global/serialization/json.h"
 
@@ -71,5 +72,8 @@ struct Tool {
 
 struct ToolResult {
     bool isError = false;
+    //! NOTE Text content blocks returned to the MCP client (MCP's TextContent shape).
+    //! A structured result (e.g. JSON) should be pre-serialized to a string by the caller.
+    std::vector<std::string> content;
 };
 }
