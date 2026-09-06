@@ -20,6 +20,9 @@
 #include "mcpcontroller.h"
 
 #include <sstream>
+#include <fstream>
+#include <iomanip>
+#include <random>
 
 #include "mcpserver.h"
 
@@ -126,9 +129,48 @@ static CommandQuery commandQuery(const std::string& name, const muse::JsonObject
     return q;
 }
 
+
+//! The token is written where only this user can read it, and MCP clients read it
+//! from the same place - so a client needs no configuration, while a web page (which
+//! cannot read local files) and another user's process cannot obtain it.
+std::string McpController::resolveAuthToken() const
+{
+    const muse::io::path_t dir = globalConfiguration()->userAppDataPath();
+    const std::string tokenPath = (dir.toStdString() + "/mcp_token");
+
+    {
+        std::ifstream in(tokenPath);
+        std::string existing;
+        if (in && std::getline(in, existing)) {
+            muse::strings::trim(existing);
+            if (existing.size() >= 32) {
+                return existing;
+            }
+        }
+    }
+
+    std::random_device rd;
+    std::ostringstream oss;
+    for (int i = 0; i < 8; ++i) {
+        oss << std::hex << std::setw(8) << std::setfill('0') << rd();
+    }
+    const std::string token = oss.str();
+
+    std::ofstream out(tokenPath, std::ios::trunc);
+    if (!out) {
+        LOGE() << "could not write the MCP token to " << tokenPath
+               << " - the bridge will refuse every request until this succeeds";
+        return {};
+    }
+    out << token << std::endl;
+    LOGI() << "created a new MCP auth token at " << tokenPath;
+    return token;
+}
+
 void McpController::init()
 {
     m_mcpServer = std::make_unique<McpServer>(application()->version().toStdString());
+    m_mcpServer->setAuthToken(resolveAuthToken());
 
     m_mcpServer->onToolsListRequest([this](const McpServer::ToolsListResultHandler& onResult) {
         std::vector<Tool> tools = makeToolsList();

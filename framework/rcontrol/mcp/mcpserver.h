@@ -48,6 +48,13 @@ public:
     void onToolsListRequest(const ToolsListHandler& onToolsList);
     void onToolsCallRequest(const ToolsCallHandler& onToolsCall);
 
+    //! Every request must carry this token in a top-level "token" field. The port
+    //! is bound to the loopback interface, which keeps other machines out but not
+    //! other things on this one - a web page the user visits can POST to it, and
+    //! any process running as the user can connect. Requiring a token that is only
+    //! readable from the user's own profile directory closes both.
+    void setAuthToken(const std::string& token);
+
 private:
 
     void onRequest(const JsonObject& request, const std::function<void(const JsonObject&)>& onResponse);
@@ -56,6 +63,8 @@ private:
     void onToolsList(const JsonObject& request, const std::function<void(const JsonObject&)>& onResponse);
     void onToolsCall(const JsonObject& request, const std::function<void(const JsonObject&)>& onResponse);
     void onNotifications(const String& method);
+
+    std::string m_authToken;
 
     void replyError(const JsonObject& request, int code, const std::string& message,
                     const std::function<void(const JsonObject&)>& onResponse);

@@ -23,6 +23,7 @@
 
 #include "modularity/ioc.h"
 #include "global/iapplication.h"
+#include "global/iglobalconfiguration.h"
 #include "global/async/asyncable.h"
 #include "rcommand/icommanddispatcher.h"
 #include "rcommand/icommandsregister.h"
@@ -34,6 +35,7 @@ class McpServer;
 class McpController : public Contextable, public async::Asyncable
 {
     GlobalInject<IApplication> application;
+    GlobalInject<IGlobalConfiguration> globalConfiguration;
     GlobalInject<rcommand::ICommandsRegister> commandsRegister;
     ContextInject<rcommand::ICommandDispatcher> commandsDispatcher = { this };
 
@@ -47,6 +49,9 @@ public:
 private:
 
     std::vector<Tool> makeToolsList() const;
+
+    //! Reads the token shared with MCP clients, creating it on first run.
+    std::string resolveAuthToken() const;
 
     std::unique_ptr<McpServer> m_mcpServer;
 };

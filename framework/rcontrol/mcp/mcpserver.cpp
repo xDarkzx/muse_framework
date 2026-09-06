@@ -68,8 +68,26 @@ void McpServer::deinit()
     m_transport->stop();
 }
 
+void McpServer::setAuthToken(const std::string& token)
+{
+    m_authToken = token;
+}
+
 void McpServer::onRequest(const JsonObject& request, const std::function<void(const JsonObject&)>& onResponse)
 {
+    //! Deliberately fails closed: with no token established nothing is accepted,
+    //! rather than falling back to serving every caller unauthenticated.
+    if (m_authToken.empty()) {
+        LOGE() << "no auth token established - refusing every request";
+        replyError(request, -32001, "Unauthorized", onResponse);
+        return;
+    }
+    if (request.value("token").toString().toStdString() != m_authToken) {
+        LOGW() << "rejecting request with a missing or incorrect token";
+        replyError(request, -32001, "Unauthorized", onResponse);
+        return;
+    }
+
     const String method = request.value("method").toString();
     if (method == u"initialize") {
         onInitialize(request, onResponse);
