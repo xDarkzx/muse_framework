@@ -39,10 +39,17 @@ private slots:
 
 private:
     void processMessage(const QByteArray& message);
+    void rejectAndClose(const char* reason);
 
     QTcpSocket* m_socket = nullptr;
     QByteArray m_buffer;
     ITransport::RequestHandler m_onRequest = nullptr;
+
+    //! A browser cannot speak this protocol, but it can POST to the port, and a
+    //! request body is just another line once the headers have been skipped - so a
+    //! web page could drive the application (confirmed live before this check was
+    //! added). Connections that begin with an HTTP request line are dropped.
+    bool m_firstLineChecked = false;
 };
 
 class TcpTransport : public ITransport

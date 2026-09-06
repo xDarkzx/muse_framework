@@ -38,14 +38,57 @@ TcpConnection::TcpConnection(QTcpSocket* socket, const ITransport::RequestHandle
     connect(m_socket, &QTcpSocket::disconnected, this, &QObject::deleteLater);
 }
 
+//! One request is not expected to approach this. The cap exists because everything
+//! received before a newline is buffered, so without it a client that never sends
+//! one can grow this without bound.
+static constexpr int MAX_BUFFERED_BYTES = 8 * 1024 * 1024;
+
+static bool looksLikeHttpRequest(const QByteArray& line)
+{
+    static const char* methods[] = { "GET ", "POST ", "PUT ", "HEAD ", "DELETE ", "OPTIONS ", "PATCH ", "TRACE ", "CONNECT " };
+    for (const char* m : methods) {
+        if (line.startsWith(m)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void TcpConnection::rejectAndClose(const char* reason)
+{
+    LOGW() << "rejecting connection: " << reason;
+    m_buffer.clear();
+    if (m_socket) {
+        m_socket->close();
+    }
+}
+
 void TcpConnection::onReadyRead()
 {
     m_buffer += m_socket->readAll();
 
+    if (m_buffer.size() > MAX_BUFFERED_BYTES) {
+        rejectAndClose("message exceeds the maximum buffered size");
+        return;
+    }
+
     int idx = -1;
     while ((idx = m_buffer.indexOf('\n')) != -1) {
-        const QByteArray message = m_buffer.left(idx);
+        QByteArray message = m_buffer.left(idx);
         m_buffer.remove(0, idx + 1);
+
+        //! Checked on the first line only: a genuine client's first line is JSON,
+        //! and an HTTP request's is its request line. Everything after the headers
+        //! - including the body, which is what a web page would put a call in - is
+        //! then never reached, because the connection is already gone.
+        if (!m_firstLineChecked) {
+            m_firstLineChecked = true;
+            if (looksLikeHttpRequest(message.trimmed())) {
+                rejectAndClose("looks like an HTTP request, not an MCP client");
+                return;
+            }
+        }
+
         processMessage(message);
     }
 }
@@ -55,7 +98,13 @@ void TcpConnection::processMessage(const QByteArray& request)
     LOGD() << "request: " << request;
 
     if (m_onRequest) {
-        ByteArray req = ByteArray::fromQByteArrayNoCopy(request);
+        //! Copied deliberately rather than wrapped with fromQByteArrayNoCopy(). The
+        //! handler resolves through an async promise, so it can run after this
+        //! function has returned - by which point the caller's buffer for this line
+        //! is gone and a no-copy view into it dangles. Confirmed live: sending
+        //! several messages in one packet produced the right response and then
+        //! crashed with SIGSEGV.
+        ByteArray req = ByteArray::fromQByteArray(request);
         m_onRequest(req, [this](const ByteArray& response) {
             QByteArray resp = response.toQByteArrayNoCopy();
             LOGD() << "response: " << resp;
