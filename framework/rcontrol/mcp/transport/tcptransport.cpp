@@ -93,9 +93,36 @@ void TcpConnection::onReadyRead()
     }
 }
 
+//! The token authenticates every request, so it must never reach a log file -
+//! these are exactly what users attach to bug reports. Only the value is masked;
+//! the rest of the request stays readable for diagnostics.
+static QByteArray redactToken(const QByteArray& in)
+{
+    const int key = in.indexOf("\"token\"");
+    if (key < 0) {
+        return in;
+    }
+    const int colon = in.indexOf(':', key);
+    if (colon < 0) {
+        return in;
+    }
+    const int open = in.indexOf('"', colon + 1);
+    if (open < 0) {
+        return in;
+    }
+    const int close = in.indexOf('"', open + 1);
+    if (close < 0) {
+        return in;
+    }
+
+    QByteArray out = in;
+    out.replace(open + 1, close - open - 1, "<redacted>");
+    return out;
+}
+
 void TcpConnection::processMessage(const QByteArray& request)
 {
-    LOGD() << "request: " << request;
+    LOGD() << "request: " << redactToken(request);
 
     if (m_onRequest) {
         //! Copied deliberately rather than wrapped with fromQByteArrayNoCopy(). The

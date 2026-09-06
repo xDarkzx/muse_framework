@@ -22,7 +22,7 @@
 #include <sstream>
 #include <fstream>
 #include <iomanip>
-#include <random>
+#include <QRandomGenerator>
 
 #include "mcpserver.h"
 
@@ -149,10 +149,16 @@ std::string McpController::resolveAuthToken() const
         }
     }
 
-    std::random_device rd;
+    //! QRandomGenerator::system() draws from the operating system's cryptographic
+    //! source. std::random_device is not required by the standard to be one - some
+    //! implementations return a deterministic sequence - and a guessable token
+    //! would defeat the whole point of having one.
+    quint32 words[8] = { 0 };
+    QRandomGenerator::system()->fillRange(words);
+
     std::ostringstream oss;
-    for (int i = 0; i < 8; ++i) {
-        oss << std::hex << std::setw(8) << std::setfill('0') << rd();
+    for (quint32 w : words) {
+        oss << std::hex << std::setw(8) << std::setfill('0') << w;
     }
     const std::string token = oss.str();
 

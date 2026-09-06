@@ -68,6 +68,20 @@ void McpServer::deinit()
     m_transport->stop();
 }
 
+//! Compared without an early exit so the time taken does not depend on how many
+//! leading characters happened to match.
+static bool tokensMatch(const std::string& a, const std::string& b)
+{
+    if (a.size() != b.size()) {
+        return false;
+    }
+    unsigned char diff = 0;
+    for (size_t i = 0; i < a.size(); ++i) {
+        diff |= static_cast<unsigned char>(a[i] ^ b[i]);
+    }
+    return diff == 0;
+}
+
 void McpServer::setAuthToken(const std::string& token)
 {
     m_authToken = token;
@@ -82,7 +96,7 @@ void McpServer::onRequest(const JsonObject& request, const std::function<void(co
         replyError(request, -32001, "Unauthorized", onResponse);
         return;
     }
-    if (request.value("token").toString().toStdString() != m_authToken) {
+    if (!tokensMatch(request.value("token").toString().toStdString(), m_authToken)) {
         LOGW() << "rejecting request with a missing or incorrect token";
         replyError(request, -32001, "Unauthorized", onResponse);
         return;
