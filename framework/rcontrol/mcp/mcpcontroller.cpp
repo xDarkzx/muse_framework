@@ -21,7 +21,9 @@
 
 #include <sstream>
 #include <fstream>
+#include <filesystem>
 #include <iomanip>
+#include <system_error>
 #include <QRandomGenerator>
 
 #include "mcpserver.h"
@@ -144,6 +146,13 @@ std::string McpController::resolveAuthToken() const
         if (in && std::getline(in, existing)) {
             muse::strings::trim(existing);
             if (existing.size() >= 32) {
+                //! Tokens written before the file was created owner-only are still out
+                //! there readable by every local user, so tighten on the way past rather
+                //! than only getting it right for new ones.
+                std::error_code ignored;
+                std::filesystem::permissions(std::filesystem::path(tokenPath),
+                                             std::filesystem::perms::owner_read | std::filesystem::perms::owner_write,
+                                             std::filesystem::perm_options::replace, ignored);
                 return existing;
             }
         }
@@ -161,6 +170,31 @@ std::string McpController::resolveAuthToken() const
         oss << std::hex << std::setw(8) << std::setfill('0') << w;
     }
     const std::string token = oss.str();
+
+    //! Created empty, restricted, and only then written to. std::ofstream creates with
+    //! the process umask applied to 0666, which on Linux and macOS usually means
+    //! 0644 - every local user could read the token and drive the application with it.
+    //! Restricting after writing would leave it readable for the moment in between.
+    {
+        std::ofstream create(tokenPath, std::ios::trunc);
+        if (!create) {
+            LOGE() << "could not create the MCP token file at " << tokenPath
+                   << " - the bridge will refuse every request until this succeeds";
+            return {};
+        }
+    }
+
+    std::error_code permError;
+    std::filesystem::permissions(std::filesystem::path(tokenPath),
+                                 std::filesystem::perms::owner_read | std::filesystem::perms::owner_write,
+                                 std::filesystem::perm_options::replace, permError);
+    if (permError) {
+        //! Refused rather than written anyway: a token others can read is worse than no
+        //! bridge, because it reads as protected while not being so.
+        LOGE() << "could not restrict permissions on " << tokenPath << " (" << permError.message()
+               << ") - refusing to write a token others could read";
+        return {};
+    }
 
     std::ofstream out(tokenPath, std::ios::trunc);
     if (!out) {
