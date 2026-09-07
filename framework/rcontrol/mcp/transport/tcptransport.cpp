@@ -19,6 +19,7 @@
 
 #include "tcptransport.h"
 
+#include <QPointer>
 #include <QTcpServer>
 #include <QTcpSocket>
 
@@ -132,12 +133,23 @@ void TcpConnection::processMessage(const QByteArray& request)
         //! several messages in one packet produced the right response and then
         //! crashed with SIGSEGV.
         ByteArray req = ByteArray::fromQByteArray(request);
-        m_onRequest(req, [this](const ByteArray& response) {
+
+        //! Guarded with a QPointer rather than capturing this directly, for the same
+        //! reason the request is copied: the handler can resolve after this function has
+        //! returned. A TcpConnection deletes itself when its socket disconnects (see the
+        //! constructor), so a client that goes away while its command is still running
+        //! would leave the callback writing through a freed socket. QPointer clears
+        //! itself when the object is destroyed, so the late response is dropped instead.
+        QPointer<TcpConnection> alive(this);
+        m_onRequest(req, [alive](const ByteArray& response) {
+            if (alive.isNull()) {
+                return;
+            }
             QByteArray resp = response.toQByteArrayNoCopy();
             LOGD() << "response: " << resp;
-            m_socket->write(resp);
-            m_socket->write("\n");
-            m_socket->flush();
+            alive->m_socket->write(resp);
+            alive->m_socket->write("\n");
+            alive->m_socket->flush();
         });
     } else {
         LOGE() << "No onResponse handler";
