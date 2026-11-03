@@ -119,8 +119,12 @@ void TableSortFilterProxyModel::clearSort()
 
 void TableSortFilterProxyModel::invalidateFilters()
 {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 10, 0)
     beginFilterChange();
     endFilterChange(QSortFilterProxyModel::Direction::Rows);
+#else
+    invalidateFilter();
+#endif
 }
 
 int TableSortFilterProxyModel::mapRowToSource(int proxyRow) const

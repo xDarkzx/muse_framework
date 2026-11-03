@@ -103,7 +103,9 @@ void SortFilterProxyModel::setAlwaysIncludeIndices(const QList<int>& indices)
         return;
     }
 
-    beginFilterChange();
+#if QT_VERSION >= QT_VERSION_CHECK(6, 10, 0)
+    beginFilterChange(); // Qt >= 6.9, paired with endFilterChange() (Qt >= 6.10)
+#endif
     m_alwaysIncludeIndices = indices;
 #if QT_VERSION >= QT_VERSION_CHECK(6, 10, 0)
     endFilterChange(QSortFilterProxyModel::Direction::Rows);
@@ -125,7 +127,9 @@ void SortFilterProxyModel::setAlwaysExcludeIndices(const QList<int>& indices)
         return;
     }
 
-    beginFilterChange();
+#if QT_VERSION >= QT_VERSION_CHECK(6, 10, 0)
+    beginFilterChange(); // Qt >= 6.9, paired with endFilterChange() (Qt >= 6.10)
+#endif
     m_alwaysExcludeIndices = indices;
 #if QT_VERSION >= QT_VERSION_CHECK(6, 10, 0)
     endFilterChange(QSortFilterProxyModel::Direction::Rows);
@@ -236,7 +240,9 @@ void SortFilterProxyModel::reset()
 
 void SortFilterProxyModel::fillRoleIds()
 {
-    beginFilterChange();
+#if QT_VERSION >= QT_VERSION_CHECK(6, 10, 0)
+    beginFilterChange(); // Qt >= 6.9, paired with endFilterChange() (Qt >= 6.10)
+#endif
 
     DEFER {
 #if QT_VERSION >= QT_VERSION_CHECK(6, 10, 0)

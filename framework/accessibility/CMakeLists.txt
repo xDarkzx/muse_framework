@@ -51,7 +51,13 @@ target_sources(muse_accessibility PRIVATE
 
 if (OS_IS_LIN)
     # it needed to send a spontaneous event by activating navigation
-    find_package(Qt6 REQUIRED COMPONENTS CorePrivate)
+    # Qt 6.9 split the private modules into components of their own; before that
+    # Qt6::CorePrivate is defined by the Core package (Debian 13 ships Qt 6.8).
+    if (Qt6_VERSION VERSION_GREATER_EQUAL 6.9)
+        find_package(Qt6 REQUIRED COMPONENTS CorePrivate)
+    else()
+        find_package(Qt6 REQUIRED COMPONENTS Core)
+    endif()
     target_link_libraries(muse_accessibility PRIVATE Qt6::CorePrivate)
 endif()
 
