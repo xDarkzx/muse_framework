@@ -20,6 +20,8 @@
 
 muse_create_qml_module(muse_uicomponents_qml ALIAS muse::uicomponents_qml FOR muse_uicomponents)
 
+set_source_files_properties(Utils.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+
 qt_add_qml_module(muse_uicomponents_qml
     URI Muse.UiComponents
     VERSION 1.0
@@ -161,7 +163,7 @@ qt_add_qml_module(muse_uicomponents_qml
         TextInputField.qml
         TimeInputField.qml
         ToggleButton.qml
-        Utils.mjs
+        Utils.qml
         ValueAdjustControl.qml
         ValueList.qml
         VisibilityBox.qml
@@ -222,12 +224,23 @@ if (${Qt6_VERSION} VERSION_GREATER_EQUAL 6.9)
             StyledRectangularShadow.qml
     )
 else()
+    # RectangularShadow (QtQuick.Effects) exists from Qt 6.9 on. The stub must be
+    # registered under the real type name, and the property has to be set before
+    # the file is added: qt_target_qml_sources() writes the qmldir entry from it.
+    set_source_files_properties(StubStyledRectangularShadow.qml PROPERTIES
+        QT_QML_SOURCE_TYPENAME StyledRectangularShadow
+    )
     qt_target_qml_sources(muse_uicomponents_qml
         QML_FILES
             StubStyledRectangularShadow.qml
     )
-    set_source_files_properties(StubStyledRectangularShadow.qml PROPERTIES
-        QT_QML_SOURCE_TYPENAME StyledRectangularShadow.qml
+    # Same for TableViewDelegate (QtQuick.Controls, Qt >= 6.9).
+    set_source_files_properties(internal/StubTableViewDelegate.qml PROPERTIES
+        QT_QML_SOURCE_TYPENAME TableViewDelegate
+    )
+    qt_target_qml_sources(muse_uicomponents_qml
+        QML_FILES
+            internal/StubTableViewDelegate.qml
     )
 endif()
 
