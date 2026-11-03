@@ -60,7 +60,7 @@ void CommandListModel::classBegin()
 void CommandListModel::formatItem(Item& item)
 {
     item.formatted = QString("%1\ntitle: %2\ndescription: %3\nenabled: %4, checked: %5")
-                     .arg(item.info.command.toString())
+                     .arg(QString::fromStdString(item.info.command.toString()))
                      .arg(item.info.title.qTranslatedWithoutMnemonic())
                      .arg(item.info.description.qTranslated())
                      .arg(item.state.enabled)
